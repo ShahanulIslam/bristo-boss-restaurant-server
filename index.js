@@ -123,6 +123,12 @@ async function run() {
             res.send(result);
         })
 
+        app.post('/menu',verifyJWT, verifyAdmin, async (req,res) =>{
+            const newItem = req.body;
+            // console.log(newItem);
+            const result = await menuCollection.insertOne(newItem);
+            res.send(result)
+        })
 
         app.get("/review", async (req, res) => {
             const result = await reviewsCollection.find().toArray();
