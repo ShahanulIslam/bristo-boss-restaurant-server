@@ -51,6 +51,7 @@ async function run() {
         const menuCollection = client.db("BistroDB").collection("menu");
         const reviewsCollection = client.db("BistroDB").collection("reviews");
         const cartsCollection = client.db("BistroDB").collection("carts");
+        const paymentCollection = client.db("BistroDB").collection("payment");
 
 
         app.post("/jwt", (req, res) => {
@@ -189,6 +190,69 @@ async function run() {
                 clientSecret: paymentIntent.client_secret
             })
         })
+
+
+        app.post("/payments", verifyJWT, async (req, res) => {
+            const payment = req.body;
+            const insertResult = await paymentCollection.insertOne(payment);
+            const query = { _id: { $in: payment.cartItems.map(id => new ObjectId(id)) } }
+            const deleteResult = await cartsCollection.deleteMany(query)
+            res.send({ insertResult, deleteResult })
+        })
+
+        app.get("/admin-stats", verifyJWT, verifyAdmin, async (req, res) => {
+            const users = await usersCollection.estimatedDocumentCount();
+            const products = await menuCollection.estimatedDocumentCount();
+            const order = await paymentCollection.estimatedDocumentCount();
+            const payments = await paymentCollection.find().toArray();
+            const revenue = payments.reduce((sum, payment) => sum + payment.price, 0)
+            res.send(
+                {
+                    revenue,
+                    users,
+                    products,
+                    order
+                }
+            )
+        })
+
+
+
+        app.get('/order-stats', async (req, res) => {
+            const pipeline = [
+                {
+                    $lookup: {
+                        from: 'menu',
+                        localField: 'menuItems',
+                        foreignField: '_id',
+                        as: 'menuItemsData'
+                    }
+                },
+                {
+                    $unwind: '$menuItemsData'
+                },
+                {
+                    $group: {
+                        _id: '$menuItemsData.category',
+                        count: { $sum: 1 },
+                        total: { $sum: '$menuItemsData.price' }
+                    }
+                },
+                {
+                    $project: {
+                        category: '$_id',
+                        count: 1,
+                        total: { $round: ['$total', 2] },
+                        _id: 0
+                    }
+                }
+            ];
+
+            const result = await paymentCollection.aggregate(pipeline).toArray()
+            res.send(result)
+
+        })
+
 
 
 
